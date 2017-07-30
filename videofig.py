@@ -1,13 +1,31 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
+# $Id$
 #
-# Copyright © 2017 bily     Huazhong University of Science and Technology
+# Copyright 2017 Lambert Wixson, based on MIT-licensed and 
+# copyrighted work from © 2017 bily     Huazhong University of Science and Technology
 #
-# Distributed under terms of the MIT license.
+# Distributed under terms of the MIT license, as follows:
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 """Figure with horizontal scrollbar and play capabilities
 
-For latest version, go to https://github.com/bilylee/videofig
+For latest version, go to https://github.com/lambertwx/videofig
 
 Basic usage
 -----------
@@ -40,16 +58,19 @@ Example 1: Plot a dynamic sine wave
 ---------
   import numpy as np
 
-  def redraw_fn(f, axes):
+  def redraw_fn(f, fig, axes, proc_func, cmap):
     amp = float(f) / 3000
     f0 = 3
     t = np.arange(0.0, 1.0, 0.001)
     s = amp * np.sin(2 * np.pi * f0 * t)
-    if not redraw_fn.initialized:
-      redraw_fn.l, = axes.plot(t, s, lw=2, color='red')
-      redraw_fn.initialized = True
+    if not hasattr(fig, 'redraw_fn'):
+      fig.redraw_fn = lambda: None
+      fig.redraw_fn.initialized = False
+    if not fig.redraw_fn.initialized:
+      fig.redraw_fn.l, = axes.plot(t, s, lw=2, color='red')
+      fig.redraw_fn.initialized = True
     else:
-      redraw_fn.l.set_ydata(s)
+      fig.redraw_fn.l.set_ydata(s)
 
   redraw_fn.initialized = False
 
@@ -64,14 +85,17 @@ Example 2: Show images in a custom directory
   img_dir = 'YOUR-IMAGE-DIRECTORY'
   img_files = glob.glob(os.path.join(video_dir, '*.jpg'))
 
-  def redraw_fn(f, axes):
+  def redraw_fn(f, fig, axes, proc_func, cmap):
     img_file = img_files[f]
     img = imread(img_file)
-    if not redraw_fn.initialized:
-      redraw_fn.im = axes.imshow(img, animated=True)
-      redraw_fn.initialized = True
+    if not hasattr(fig, 'redraw_fn'):
+      fig.redraw_fn = lambda: None
+      fig.redraw_fn.initialized = False
+    if not fig.redraw_fn.initialized:
+      fig.redraw_fn.im = axes.imshow(img, animated=True)
+      fig.redraw_fn.initialized = True
     else:
-      redraw_fn.im.set_array(img)
+      fig.redraw_fn.im.set_array(img)
   redraw_fn.initialized = False
 
   videofig(len(img_files), redraw_fn, play_fps=30)
@@ -88,38 +112,66 @@ Example 3: Show images together with object bounding boxes
   img_files = glob.glob(os.path.join(video_dir, '*.jpg'))
   box_files = glob.glob(os.path.join(video_dir, '*.txt'))
 
-  def redraw_fn(f, axes):
+  def redraw_fn(f, fig, axes, proc_func, cmap):
     img = imread(img_files[f])
     box = bbread(box_files[f])  # Define your own bounding box reading utility
     x, y, w, h = box
-    if not redraw_fn.initialized:
+    if not hasattr(fig, 'redraw_fn'):
+      fig.redraw_fn = lambda: None
+      fig.redraw_fn.initialized = False
+    if not fig.redraw_fn.initialized:
       im = axes.imshow(img, animated=True)
       bb = Rectangle((x, y), w, h,
                      fill=False,  # remove background
                      edgecolor="red")
       axes.add_patch(bb)
-      redraw_fn.im = im
-      redraw_fn.bb = bb
-      redraw_fn.initialized = True
+      fig.redraw_fn.im = im
+      fig.redraw_fn.bb = bb
+      fig.redraw_fn.initialized = True
     else:
-      redraw_fn.im.set_array(img)
-      redraw_fn.bb.set_xy((x, y))
-      redraw_fn.bb.set_width(w)
-      redraw_fn.bb.set_height(h)
+      fig.redraw_fn.im.set_array(img)
+      fig.redraw_fn.bb.set_xy((x, y))
+      fig.redraw_fn.bb.set_width(w)
+      fig.redraw_fn.bb.set_height(h)
   redraw_fn.initialized = False
 
   videofig(len(img_files), redraw_fn, play_fps=30)
+  
+Example 4: Apply horizontal Sobel filter to a scikit-image image sequence
+----------
+  import os
+  import skimage
+  from skimage import color, io, filters
+  
+  video_dir = 'YOUR-VIDEO-DIRECTORY'
+  seq = io.imread_collection(os.path.join(video_dir, 'img*.png'), conserve_memory=True) 
+  
+  # The calls below use the default redraw_fn, which calls proc_func.
+  
+  # Display the raw images
+  videofig(len(seq), redraw_fn, play_fps=30, 
+           proc_func=lambda f: seq[f] )  
+  
+  # Display the filtered images.  We return a 2-tuple from proc_func.  The second element
+  # could be a list of regions, which would be displayed by the draw_regions() function in videofig.py
+  videofig(len(seq), redraw_fn, play_fps=30, 
+         proc_func=lambda f: (filters.sobel_h(color.rgb2gray(seq[f])), None)
+         cmap='viridis')
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import matplotlib as mpl
+import matplotlib.patches
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider
 
-def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None, *args):
+#%%
+def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None, proc_func = None, 
+             fig = None, cmap = None, winname=None, *args):
   """Figure with horizontal scrollbar and play capabilities
   
   This script is mainly inspired by the elegant work of João Filipe Henriques
@@ -131,8 +183,18 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   :param play_fps: an integer, number of frames per second, used to control the play speed
   :param big_scroll: an integer, big scroll number used when pressed page down or page up keys. 
   :param key_func: optional callable which signature key_func(key), used to provide custom key shortcuts.
+  
+  :param proc_func: The processing function that will be called by redraw_func.  Must return a 2-tuple (image, regions).
+  
+  :param fig: An already-created matplotlib figure to use.  If this parameter is omitted, a new figure will be created.
+
+  :param cmap: A colormap to use.  If you are trying to display floating-point numbers, I suggest
+               you pass in 'viridis'
+  
+  :param winname: A title for your matplotlib window.
+
   :param args: other optional arguments
-  :return: None
+  :return: The figure that was created (or was passed in)
   """
   # Check arguments
   check_int_scalar(num_frames, 'num_frames')
@@ -141,23 +203,34 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   check_int_scalar(big_scroll, 'big_scroll')
   if key_func:
     check_callback(key_func, 'key_func')
-
+  if proc_func:
+      check_callback(proc_func, 'proc_func')
+      
   # Initialize figure
-  fig_handle = plt.figure()
-
+  if fig:
+      fig_handle = fig
+  else:
+      fig_handle = plt.figure()
+  if winname:
+        fig_handle.canvas.set_window_title(winname)
+        
   # main drawing axes for video display
-  axes_handle = plt.axes([0, 0.03, 1, 0.97])
-  axes_handle.set_axis_off()
+  if 1:
+      axes_handle = fig_handle.add_axes([0, 0.03, 1, 0.97])
+      axes_handle.set_axis_off()
+  else:
+      axes_handle = fig_handle.gca()
 
   # Build scrollbar
-  scroll_axes_handle = plt.axes([0, 0, 1, 0.03], facecolor='lightgoldenrodyellow')
+  scroll_axes_handle = fig_handle.add_axes([0, 0, 1, 0.03], facecolor='lightgoldenrodyellow')
   scroll_handle = Slider(scroll_axes_handle, '', 0.0, num_frames - 1, valinit=0.0)
 
   def draw_new(_):
     # Set to the right axes and call the custom redraw function
-    plt.sca(axes_handle)
-    redraw_func(int(scroll_handle.val), axes_handle)
+    fig_handle.sca(axes_handle)
+    redraw_func(int(scroll_handle.val), fig_handle, axes_handle, proc_func, cmap)
     fig_handle.canvas.draw_idle()
+    #print("In draw_new()")
 
   def scroll(new_f):
     new_f = min(max(new_f, 0), num_frames - 1)  # clip in the range of [0, num_frames - 1]
@@ -168,9 +241,10 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
       play.running = False
 
     if cur_f != new_f:
-      # move scroll bar to new position
+      # move scroll bar to new position.  The set_val results in a call to the 
+      # scroll_handle's onchanged handler, which is our draw_new()
       scroll_handle.set_val(new_f)
-
+    #print("In scroll()")
     return axes_handle
 
   def play(period):
@@ -179,13 +253,16 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
       frame_idxs = range(int(scroll_handle.val), num_frames)
       play.anim = FuncAnimation(fig_handle, scroll, frame_idxs,
                                 interval=1000 * period, repeat=False)
-      plt.draw()
+      #fig_handle.draw()
+      fig_handle.canvas.draw_idle()
     else:
       play.anim.event_source.stop()
 
   # Set initial player state
   play.running = False
 
+  # It's certainly annoying we don't seem to get auto-repeat calls of this function, 
+  # e.g. when the arrow keys are held down.
   def key_press(event):
     key = event.key
     f = scroll_handle.val
@@ -201,7 +278,7 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
       scroll(0)
     elif key == 'end':
       scroll(num_frames - 1)
-    elif key == 'enter':
+    elif key == 'enter' or key == ' ':
       play(1 / play_fps)
     elif key == 'backspace':
       play(5 / play_fps)
@@ -214,16 +291,17 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   fig_handle.canvas.mpl_connect('key_press_event', key_press)
 
   # Draw initial frame
-  redraw_func(0, axes_handle)
+  redraw_func(0, fig_handle, axes_handle, proc_func, cmap)
 
   # Start playing
   play(1 / play_fps)
 
   # plt.show() has to be put in the end of the function,
   # otherwise, the program simply won't work, weird...
-  plt.show()
+  fig_handle.show()
+  #return fig_handle
 
-
+#%%
 def check_int_scalar(a, name):
   assert isinstance(a, int), '{} must be a int scalar, instead of {}'.format(name, type(name))
 
@@ -233,21 +311,71 @@ def check_callback(a, name):
   # for more details about python function type detection.
   assert callable(a), '{} must be callable, instead of {}'.format(name, type(name))
 
+#%%
+# regions - a list of region object that have a .bbox attribute, such as the skimage.RegionProperties object.
+def draw_regions(axes, regions):
+    for reg in regions:
+        top = reg.bbox[0]
+        left = reg.bbox[1]
+        h = reg.bbox[2] - top
+        w = reg.bbox[3] - left
+        rect = mpl.patches.Rectangle((left, top), w, h, edgecolor='red', facecolor='none', linewidth=4 )
+        axes.add_patch(rect)
+        
+#%%
+# Default redraw function, specially designed for image sequences
+def redraw_fn(f, fig, axes, proc_func, cmap = None):
+    # Assumes proc_func returns either an image or a 2-tuple holding (image, regions)
+    proc_result = proc_func(f)
+    if type(proc_result) is tuple:
+        (img, regions) = proc_result
+    else:
+        img = proc_result
+        regions = None
+    
+    strDisp = "Frm {0}".format(f)
+    # Create a generic object that's going to hold various attributes, and attach it to fig.
+    # As per https://stackoverflow.com/questions/2827623/python-create-object-and-add-attributes-to-it
+    if not hasattr(fig, 'redraw_fn'):
+        fig.redraw_fn = lambda: None
+        fig.redraw_fn.initialized = False
+    # Clear any graphics items we may have drawn on the previous frame
+    axes.patches.clear()
+    
+    if not fig.redraw_fn.initialized:
+        fig.redraw_fn.im = axes.imshow(img, animated=True, cmap=cmap)
+        fig.redraw_fn.txtstyle = dict(size=20, color='cyan')
+        fig.redraw_fn.txt = axes.text(0, 0, strDisp, va='top', **fig.redraw_fn.txtstyle)
+        fig.redraw_fn.initialized = True
+    else:
+        fig.redraw_fn.im.set_array(img)
+        fig.redraw_fn.txt.set_text(strDisp)
+    
+    if regions:
+        draw_regions(axes, regions)
+    return
 
-if __name__ == '__main__':
+#%%
+# Example of how to use
+if (__name__ == '__main__') and False:
   import numpy as np
 
-  def redraw_fn(f, axes):
+  def redraw_fn(f, fig, axes, proc_func, cmap):
     amp = float(f) / 3000
     f0 = 3
     t = np.arange(0.0, 1.0, 0.001)
     s = amp * np.sin(2 * np.pi * f0 * t)
-    if not redraw_fn.initialized:
-      redraw_fn.l, = axes.plot(t, s, lw=2, color='red')
-      redraw_fn.initialized = True
+
+    if not hasattr(fig, 'redraw_fn'):
+        fig.redraw_fn = lambda: None
+        fig.redraw_fn.initialized = False
+    if not fig.redraw_fn.initialized:
+      fig.redraw_fn.l, = axes.plot(t, s, lw=2, color='red')
+      fig.redraw_fn.initialized = True
     else:
-      redraw_fn.l.set_ydata(s)
+      fig.redraw_fn.l.set_ydata(s)
 
-  redraw_fn.initialized = False
-
+  # The calls below open 2 animated matplotlib windows.
   videofig(100, redraw_fn)
+  videofig(500, redraw_fn)
+  

@@ -10,7 +10,7 @@ Accidentally, I came across [the excellent script of João Filipe Henriques](htt
 ), which provides utilities for detailed image sequence inspection before `VideoPlayer` is available in Matlab. Inspired by this, I decided to write a similar function in Python before more sophisticated tools come out.
 
 ## Dependency
-This tool is specifically designed to be minimal, lightweight and readable such that anyone can easily modify it to suit different needs. The only dependency is `Matplotlib`. I have tested it in Python 2.7, but it should also work in Python 3.5.
+This tool is specifically designed to be minimal, lightweight and readable such that anyone can easily modify it to suit different needs. The only dependency is `Matplotlib`. I have tested it in Python 3.5.
 
 - matplotlib >= 2.0.0
  
@@ -124,3 +124,25 @@ can add more shortcut keys (or empty for none).
 
   videofig(len(img_files), redraw_fn, play_fps=30)
 ```
+
+### Example 4: Apply horizontal Sobel filter to a scikit-image image sequence
+```python
+  import os
+  import skimage
+  from skimage import color, io, filters
+  
+  video_dir = 'YOUR-VIDEO-DIRECTORY'
+  seq = io.imread_collection(os.path.join(video_dir, 'img*.png'), conserve_memory=True) 
+  
+  # The calls below use the default redraw_fn, which calls proc_func.
+  
+  # Display the raw images
+  videofig(len(seq), redraw_fn, play_fps=30, 
+           proc_func=lambda f: seq[f] )  
+  
+  # Display the filtered images.  We return a 2-tuple from proc_func.  The second element
+  # could be a list of regions, which would be displayed by the draw_regions() function in videofig.py
+  videofig(len(seq), redraw_fn, play_fps=30, 
+         proc_func=lambda f: (filters.sobel_h(color.rgb2gray(seq[f])), None)
+         cmap='viridis')
+```         
