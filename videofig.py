@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
-# $Id$
+# $Id: videofig.py 613 2017-08-11 22:46:35Z lambertw $
 #
 # Copyright 2017 Lambert Wixson, based on MIT-licensed and 
 # copyrighted work from © 2017 bily     Huazhong University of Science and Technology
@@ -155,7 +155,7 @@ Example 4: Apply horizontal Sobel filter to a scikit-image image sequence
   # Display the filtered images.  We return a 2-tuple from proc_func.  The second element
   # could be a list of regions, which would be displayed by the draw_regions() function in videofig.py
   videofig(len(seq), redraw_fn, play_fps=30, 
-         proc_func=lambda f: (filters.sobel_h(color.rgb2gray(seq[f])), None)
+         proc_func=lambda f: (filters.sobel_h(color.rgb2gray(seq[f])), None),
          cmap='viridis')
 """
 
@@ -171,7 +171,7 @@ from matplotlib.widgets import Slider
 
 #%%
 def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None, proc_func = None, 
-             fig = None, cmap = None, winname=None, *args):
+             fig = None, cmap = None, winname=None, overlay_func = None, vmin=None, vmax=None, *args):
   """Figure with horizontal scrollbar and play capabilities
   
   This script is mainly inspired by the elegant work of João Filipe Henriques
@@ -205,6 +205,8 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
     check_callback(key_func, 'key_func')
   if proc_func:
       check_callback(proc_func, 'proc_func')
+  if overlay_func:
+      check_callback(overlay_func, 'overlay_func')
       
   # Initialize figure
   if fig:
@@ -228,7 +230,7 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   def draw_new(_):
     # Set to the right axes and call the custom redraw function
     fig_handle.sca(axes_handle)
-    redraw_func(int(scroll_handle.val), fig_handle, axes_handle, proc_func, cmap)
+    redraw_func(int(scroll_handle.val), fig_handle, axes_handle, proc_func, cmap, overlay_func=overlay_func, vmin=vmin, vmax=vmax)
     fig_handle.canvas.draw_idle()
     #print("In draw_new()")
 
@@ -291,7 +293,7 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   fig_handle.canvas.mpl_connect('key_press_event', key_press)
 
   # Draw initial frame
-  redraw_func(0, fig_handle, axes_handle, proc_func, cmap)
+  redraw_func(0, fig_handle, axes_handle, proc_func, cmap, overlay_func=overlay_func, vmin=vmin, vmax=vmax)
 
   # Start playing
   play(1 / play_fps)
@@ -324,7 +326,7 @@ def draw_regions(axes, regions):
         
 #%%
 # Default redraw function, specially designed for image sequences
-def redraw_fn(f, fig, axes, proc_func, cmap = None):
+def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=None, vmax=None):
     # Assumes proc_func returns either an image or a 2-tuple holding (image, regions)
     proc_result = proc_func(f)
     if type(proc_result) is tuple:
@@ -343,7 +345,7 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None):
     axes.patches.clear()
     
     if not fig.redraw_fn.initialized:
-        fig.redraw_fn.im = axes.imshow(img, animated=True, cmap=cmap)
+        fig.redraw_fn.im = axes.imshow(img, animated=True, cmap=cmap, vmin=vmin, vmax=vmax)
         fig.redraw_fn.txtstyle = dict(size=20, color='cyan')
         fig.redraw_fn.txt = axes.text(0, 0, strDisp, va='top', **fig.redraw_fn.txtstyle)
         fig.redraw_fn.initialized = True
@@ -353,6 +355,9 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None):
     
     if regions:
         draw_regions(axes, regions)
+    
+    if overlay_func:
+        overlay_func(axes, f)
     return
 
 #%%
