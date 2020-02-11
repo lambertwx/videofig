@@ -171,7 +171,8 @@ from matplotlib.widgets import Slider
 
 #%%
 def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None, proc_func = None, 
-             fig = None, cmap = None, winname=None, overlay_func = None, vmin=None, vmax=None, *args):
+             fig = None, cmap = None, winname=None, overlay_func = None, vmin=None, vmax=None,
+             autostart = False, *args):
   """Figure with horizontal scrollbar and play capabilities
   
   This script is mainly inspired by the elegant work of João Filipe Henriques
@@ -296,12 +297,13 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
   redraw_func(0, fig_handle, axes_handle, proc_func, cmap, overlay_func=overlay_func, vmin=vmin, vmax=vmax)
 
   # Start playing
-  play(1 / play_fps)
+  if autostart:
+      play(1 / play_fps)
 
   # plt.show() has to be put in the end of the function,
   # otherwise, the program simply won't work, weird...
   fig_handle.show()
-  #return fig_handle
+  return fig_handle
 
 #%%
 def check_int_scalar(a, name):
@@ -330,12 +332,13 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=No
     # Assumes proc_func returns either an image or a 2-tuple holding (image, regions)
     proc_result = proc_func(f)
     if type(proc_result) is tuple:
-        (img, regions) = proc_result
+        (img, regions, title) = proc_result
     else:
         img = proc_result
         regions = None
-    
+
     strDisp = "Frm {0}".format(f)
+
     # Create a generic object that's going to hold various attributes, and attach it to fig.
     # As per https://stackoverflow.com/questions/2827623/python-create-object-and-add-attributes-to-it
     if not hasattr(fig, 'redraw_fn'):
@@ -352,7 +355,13 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=No
     else:
         fig.redraw_fn.im.set_array(img)
         fig.redraw_fn.txt.set_text(strDisp)
-    
+    if title:
+        # TODO: Figure out why set_title is not producing text at the top of the image when
+        # in jupyter notebook.
+        #axes.set_title(title, {'verticalalignment': 'top',
+        #                               'horizontalalignment':'left'})
+        fig.canvas.set_window_title(title);
+
     if regions:
         draw_regions(axes, regions)
     
