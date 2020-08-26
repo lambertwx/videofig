@@ -170,6 +170,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider
 
 #%%
+
 def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None, proc_func = None, 
              fig = None, cmap = None, winname=None, overlay_func = None, vmin=None, vmax=None,
              autostart = False, *args):
@@ -208,7 +209,12 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
       check_callback(proc_func, 'proc_func')
   if overlay_func:
       check_callback(overlay_func, 'overlay_func')
-      
+
+  backend_name = mpl.get_backend()
+  print(f'Using backend {backend_name}')
+  if backend_name.lower() == 'macosx':
+      print("If starting/stopping sequence play with spacebar is unreliable, try switching backend to Qt5Agg.")
+
   # Initialize figure
   if fig:
       fig_handle = fig
@@ -241,28 +247,40 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
 
     # Stop player at the end of the sequence
     if new_f == (num_frames - 1):
-      play.running = False
+      fig_handle.play_fn.running = False
 
     if cur_f != new_f:
       # move scroll bar to new position.  The set_val results in a call to the 
       # scroll_handle's onchanged handler, which is our draw_new()
       scroll_handle.set_val(new_f)
-    #print("In scroll()")
+    # print("In scroll()")
     return axes_handle
 
   def play(period):
-    play.running ^= True  # Toggle state
-    if play.running:
-      frame_idxs = range(int(scroll_handle.val), num_frames)
-      play.anim = FuncAnimation(fig_handle, scroll, frame_idxs,
-                                interval=1000 * period, repeat=False)
-      #fig_handle.draw()
+    fig_handle.play_fn.running ^= True  # Toggle state
+    # print(f'Running {fig_handle.play_fn.running}')
+    if fig_handle.play_fn.running:
+      frame_idxs = range(int(scroll_handle.val + 1), num_frames)
+      fig_handle.play_fn.anim = FuncAnimation(fig_handle, scroll, frame_idxs,
+                                interval=1000 * period, repeat=False,
+                                              blit=False, cache_frame_data=False)
+
       fig_handle.canvas.draw_idle()
+      if mpl.get_backend().lower() == 'macosx':
+          # For some reason the MacOSX backend's implementation of FuncAnimation does not
+          # start automatically stepping reliably unless you force scroll to occur with the
+          # following line.
+          scroll(scroll_handle.val + 1)
     else:
-      play.anim.event_source.stop()
+      fig_handle.play_fn.anim.event_source.stop()
 
   # Set initial player state
-  play.running = False
+  # Create a generic object that's going to hold various attributes, and attach it to fig.
+  # As per https://stackoverflow.com/questions/2827623/python-create-object-and-add-attributes-to-it
+  if not hasattr(fig, 'play_fn'):
+    fig_handle.play_fn = lambda: None
+    fig_handle.play_fn.initialized = False
+  fig_handle.play_fn.running = False
 
   # It's certainly annoying we don't seem to get auto-repeat calls of this function, 
   # e.g. when the arrow keys are held down.
@@ -282,9 +300,9 @@ def videofig(num_frames, redraw_func, play_fps=25, big_scroll=30, key_func=None,
     elif key == 'end':
       scroll(num_frames - 1)
     elif key == 'enter' or key == ' ':
-      play(1 / play_fps)
+      play(1. / play_fps)
     elif key == 'backspace':
-      play(5 / play_fps)
+      play(5. / play_fps)
     else:
       if key_func:
         key_func(key)
@@ -325,7 +343,15 @@ def draw_regions(axes, regions):
         w = reg.bbox[3] - left
         rect = mpl.patches.Rectangle((left, top), w, h, edgecolor='red', facecolor='none', linewidth=4 )
         axes.add_patch(rect)
-        
+
+        if hasattr(reg, 'label'):
+            style = dict(size=10, color='green')
+            txt = axes.text(left, top, reg.label, va='top', **style)
+
+def clear_graphics(axes):
+    axes.patches.clear()
+    axes.texts.clear()
+
 #%%
 # Default redraw function, specially designed for image sequences
 def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=None, vmax=None):
@@ -345,8 +371,8 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=No
         fig.redraw_fn = lambda: None
         fig.redraw_fn.initialized = False
     # Clear any graphics items we may have drawn on the previous frame
-    axes.patches.clear()
-    
+    clear_graphics(axes)
+
     if not fig.redraw_fn.initialized:
         fig.redraw_fn.im = axes.imshow(img, animated=True, cmap=cmap, vmin=vmin, vmax=vmax)
         fig.redraw_fn.txtstyle = dict(size=20, color='cyan')
@@ -354,13 +380,16 @@ def redraw_fn(f, fig, axes, proc_func, cmap = None, overlay_func = None, vmin=No
         fig.redraw_fn.initialized = True
     else:
         fig.redraw_fn.im.set_array(img)
-        fig.redraw_fn.txt.set_text(strDisp)
+        if True:
+            fig.redraw_fn.txt = axes.text(0, 0, strDisp, va='top', **fig.redraw_fn.txtstyle)
+        else:
+            fig.redraw_fn.txt.set_text(strDisp)
     if title:
         # TODO: Figure out why set_title is not producing text at the top of the image when
         # in jupyter notebook.
         #axes.set_title(title, {'verticalalignment': 'top',
         #                               'horizontalalignment':'left'})
-        fig.canvas.set_window_title(title);
+        fig.canvas.set_window_title(title)
 
     if regions:
         draw_regions(axes, regions)
