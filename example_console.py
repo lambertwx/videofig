@@ -41,3 +41,9 @@ drawcoll(imread_collection("/Users/lambertw/images/places365-std/val_256/Places3
 drawcoll(imread_collection("/Users/lambertw/images/places365-std/val_256/Places365_val_0001*.jpg",
                         conserve_memory=True))
 
+# This is necessary to service the matplotlib window event loop.
+while True:
+    # Do just a few secs at a time because signals like ctrl-C won't be handled until
+    # the pause exits.
+    plt.pause(3)
+
